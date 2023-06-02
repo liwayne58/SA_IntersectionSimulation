@@ -149,16 +149,6 @@ class Main:
         self.ws = WebSocket(self.wsReceiveHandler)
         self.ws.run()
 
-        t = Thread(target=self.test)
-        t.start()
-
-    def test(self):
-        while True:
-            self.mode = EMode.NORMAL
-            time.sleep(1)
-            self.mode = EMode.TRAFFIC_JAM
-            time.sleep(1)
-
     def run(self):
         # Load images
         backgroundImage = pygame.image.load("Data/Images/intersection.png")
@@ -272,22 +262,41 @@ class Main:
 
     def countSignalTime(self):
         while True:
-            for index, (key, road) in enumerate(self.roads.items()):
-                currentSignal = road.trafficSignals.currentSignal
-                road.trafficSignals.signalStates[currentSignal.name] -= 1
-                signalTime = road.trafficSignals.signalStates[currentSignal.name]
-                if signalTime == 0:
-                    road.trafficSignals.switchNextSignal()
-                    if self.mode == EMode.NORMAL:
-                        if road.isPrimary:
+            while self.mode == EMode.NORMAL:
+                for index, (key, road) in enumerate(self.roads.items()):
+                    currentSignal = road.trafficSignals.currentSignal
+                    signalTime = road.trafficSignals.signalStates[currentSignal.name]
+                    if signalTime > 0:
+                        road.trafficSignals.signalStates[currentSignal.name] -= 1
+                    else:
+                        road.trafficSignals.switchNextSignal()
+                        if road.direction == EDirection.EAST or road.direction == EDirection.WEST:
                             road.trafficSignals.signalStates = self.defaultPrimaryTrafficPeriod.copy()
                         else:
                             road.trafficSignals.signalStates = self.defaultSecondTrafficPeriod.copy()
-                    elif self.mode == EMode.TRAFFIC_JAM:
+                    if self.mode is not EMode.NORMAL and currentSignal == ESignal.YELLOW:
+                        break
+                time.sleep(1)
+
+            while self.mode == EMode.TRAFFIC_JAM:
+                for index, (key, road) in enumerate(self.roads.items()):
+                    currentSignal = road.trafficSignals.currentSignal
+                    signalTime = road.trafficSignals.signalStates[currentSignal.name]
+                    if signalTime > 0:
+                        road.trafficSignals.signalStates[currentSignal.name] -= 1
+                    else:
+                        road.trafficSignals.switchNextSignal()
                         if road.direction in self.trafficJamDirection:
                             road.trafficSignals.signalStates = self.trafficJamPeriod.copy()
                         else:
                             road.trafficSignals.signalStates = self.nonTrafficJamPeriod.copy()
+                    if self.mode is not EMode.TRAFFIC_JAM and currentSignal == ESignal.YELLOW:
+                        break
+                time.sleep(1)
+
+            while self.mode == EMode.EMERGENCY:
+                pass
+
             time.sleep(1)
 
     def move(self, vehicle):
@@ -379,21 +388,7 @@ class Main:
                 data[key] = road.defaultPeriod
             self.wsSend(Communication(EInstruction.SEND_DATA_TRAFFIC_PERIOD.name, data).toJson())
         elif instruction == EInstruction.SWITCH_MODE.name:
-            data = jsonData["data"]
-            mode = data["trafficMode"]
-            if mode == EMode.NORMAL.name:
-                self.mode = EMode.NORMAL
-            elif mode == EMode.TRAFFIC_JAM.name:
-                self.trafficJamPeriod[ESignal.GREEN.name] = data["trafficJam"]["greenSecond"]
-                self.trafficJamPeriod[ESignal.YELLOW.name] = data["trafficJam"]["yellowSecond"]
-                self.trafficJamPeriod[ESignal.RED.name] = data["trafficJam"]["redSecond"]
-
-                self.nonTrafficJamPeriod[ESignal.GREEN.name] = data["nonTrafficJam"]["greenSecond"]
-                self.nonTrafficJamPeriod[ESignal.YELLOW.name] = data["nonTrafficJam"]["yellowSecond"]
-                self.nonTrafficJamPeriod[ESignal.RED.name] = data["nonTrafficJam"]["redSecond"]
-                self.mode = EMode.TRAFFIC_JAM
-            elif mode == EMode.EMERGENCY.name:
-                self.mode = EMode.EMERGENCY
+            pass
 
     def wsSend(self, data):
         self.ws.server.send_message_to_all(data)
