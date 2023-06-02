@@ -26,15 +26,15 @@ class Main:
         # Settings / 設定
         # Setup Primary Roads Period / 設定主要道路的紅黃綠燈週期
         self.defaultPrimaryTrafficPeriod = {
-            ESignal.GREEN.name: 40,
+            ESignal.GREEN.name: 30,
             ESignal.GREEN.YELLOW.name: 5,
-            ESignal.RED.name: 15
+            ESignal.RED.name: 30
         }
         # Setup Second Roads Period / 設定次要道路的紅黃綠燈週期
         self.defaultSecondTrafficPeriod = {
-            ESignal.GREEN.name: 15,
+            ESignal.GREEN.name: 30,
             ESignal.GREEN.YELLOW.name: 5,
-            ESignal.RED.name: 40
+            ESignal.RED.name: 30
         }
         # Generate vehicle's period (per second) / 產生車輛的週期 (台/秒)
         self.generatePeriod = 1
