@@ -33,7 +33,7 @@ class Main:
         screen_info = pyautogui.size()
         self.width, self.height = screen_info.width, screen_info.height
 
-        self.MySQL = MySQLConnector()
+        # self.MySQL = MySQLConnector()
 
         # Settings / 設定
         # Setup Primary Roads Period / 設定主要道路的紅黃綠燈週期
