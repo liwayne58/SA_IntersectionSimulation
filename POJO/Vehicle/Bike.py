@@ -1,5 +1,5 @@
 from Enum.EnumDirection import EDirection
-from Enum.EnumVehicle import EVehicleType
+from Enum.EnumVehicle import EVehicle
 
 
 class Bike:
@@ -7,7 +7,7 @@ class Bike:
         self.speed = 2.5
         self.direction = direction
         self.lane = lane
-        self.vType = EVehicleType.BIKE
+        self.vType = EVehicle.BIKE
 
 
 if __name__ == '__main__':

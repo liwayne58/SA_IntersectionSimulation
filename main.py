@@ -1,21 +1,28 @@
 from Enum.EnumInstruction import EInstruction
 from Enum.EnumDirection import EDirection
-from Enum.EnumVehicle import EVehicleType
+from Enum.EnumVehicle import EVehicle
 from Enum.EnumSignal import ESignal
 from Enum.EnumMode import EMode
+from Enum.EnumLane import ELane
 
 from POJO.Intersection.Road import Road
 from POJO.Communication import Communication
 
 from Model.WebSocket import WebSocket
+from Model.MySQLConnector import MySQLConnector
 
 from threading import Thread
+
+from PIL import Image
+import pyautogui
 import pygame
+import base64
 import random
 import json
 import time
 import sys
 import os
+import io
 
 
 class Main:
@@ -23,18 +30,23 @@ class Main:
         pygame.init()
         pygame.display.set_caption(name)
 
+        screen_info = pyautogui.size()
+        self.width, self.height = screen_info.width, screen_info.height
+
+        self.MySQL = MySQLConnector()
+
         # Settings / 設定
         # Setup Primary Roads Period / 設定主要道路的紅黃綠燈週期
         self.defaultPrimaryTrafficPeriod = {
-            ESignal.GREEN.name: 40,
+            ESignal.GREEN.name: 30,
             ESignal.GREEN.YELLOW.name: 5,
-            ESignal.RED.name: 15
+            ESignal.RED.name: 30
         }
         # Setup Second Roads Period / 設定次要道路的紅黃綠燈週期
         self.defaultSecondTrafficPeriod = {
-            ESignal.GREEN.name: 15,
+            ESignal.GREEN.name: 30,
             ESignal.GREEN.YELLOW.name: 5,
-            ESignal.RED.name: 40
+            ESignal.RED.name: 30
         }
         # Generate vehicle's period (per second) / 產生車輛的週期 (台/秒)
         self.generatePeriod = 1
@@ -90,9 +102,18 @@ class Main:
         self.simulation = pygame.sprite.Group()
 
         # Screensize
-        screenWidth = 1400
-        screenHeight = 800
-        self.screenSize = (screenWidth, screenHeight)
+        self.screenWidth = 1400
+        self.screenHeight = 800
+        self.screenSize = (self.screenWidth, self.screenHeight)
+        self.screen = pygame.display.set_mode(self.screenSize)
+
+        # Loads Screenshot coordinate/position
+        coordinateEast = (0, 340, 590, 425)  # WEST to EAST
+        coordinateWest = (790, 435, 1400, 520)  # EAST to WEST
+        coordinateNorth = (688, 0, 780, 330)  # SOUTH to NORTH
+        coordinateSouth = (590, 535, 790, 800)  # NORTH to SOUTH
+
+        self.screenshotCoordinates = [coordinateSouth, coordinateNorth, coordinateWest, coordinateEast]
 
         # Coordinates of vehicle count counter
         self.vehicleCountTexts = ["0", "0", "0", "0"]
@@ -146,17 +167,22 @@ class Main:
         t = Thread(target=self.countSignalTime)
         t.start()
 
+        # t = Thread(target=self.uploadCCTV)
+        # t.start()
+
         self.ws = WebSocket(self.wsReceiveHandler)
         self.ws.run()
 
-        t = Thread(target=self.test)
-        t.start()
+        # t = Thread(target=self.test)
+        # t.start()
 
     def test(self):
         while True:
-            self.mode = EMode.NORMAL
-            time.sleep(1)
-            self.mode = EMode.TRAFFIC_JAM
+            for (key, road) in self.roads.items():
+                for (sKey, lane) in road.lane.items():
+                    for vehicle in lane:
+                        if vehicle.x > 1400 or vehicle.y > 800:
+                            print(vehicle)
             time.sleep(1)
 
     def run(self):
@@ -173,8 +199,6 @@ class Main:
             ESignal.RED.name: redSignal
         }
 
-        screen = pygame.display.set_mode(self.screenSize)
-
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -182,43 +206,55 @@ class Main:
                     sys.exit()
 
             # Display background in simulation
-            screen.blit(backgroundImage, (0, 0))
+            self.screen.blit(backgroundImage, (0, 0))
 
             # Display time elapsed
             timeElapsedText = self.font.render(f"Time Elapsed:  {self.timeElapsed}", True, self.black, self.white)
-            screen.blit(timeElapsedText, self.timeElapsedCoordinate)
+            self.screen.blit(timeElapsedText, self.timeElapsedCoordinate)
 
             # Display signal and set timer according to current status: green, yellow, or red
             for index, (key, road) in enumerate(self.roads.items()):
-                screen.blit(signalImages[road.trafficSignals.currentSignal.name], self.signalCoordinates[index])
+                self.screen.blit(signalImages[road.trafficSignals.currentSignal.name], self.signalCoordinates[index])
 
             # Display signal timer
             for index, (key, road) in enumerate(self.roads.items()):
                 signalTime = road.trafficSignals.signalStates[road.trafficSignals.currentSignal.name]
                 self.signalTexts[index] = self.font.render(str(signalTime), True, self.white, self.black)
-                screen.blit(self.signalTexts[index], self.signalTimerCoordinates[index])
+                self.screen.blit(self.signalTexts[index], self.signalTimerCoordinates[index])
 
             # Display vehicle count
             for index, (key, road) in enumerate(self.roads.items()):
                 displayText = road.crossed
                 self.vehicleCountTexts[index] = self.font.render(str(displayText), True, self.black, self.white)
-                screen.blit(self.vehicleCountTexts[index], self.vehicleCountCoordinates[index])
+                self.screen.blit(self.vehicleCountTexts[index], self.vehicleCountCoordinates[index])
+
+            # self.stopPosition
+            # reset stop coordinates of lanes and vehicles
+            for (key, road) in self.roads.items():
+                for vehicle in road.lane[ELane.First.value]:
+                    vehicle.stop = self.stopPosition[vehicle.direction]
+                for vehicle in road.lane[ELane.Second.value]:
+                    vehicle.stop = self.stopPosition[vehicle.direction]
+                for vehicle in road.lane[ELane.Third.value]:
+                    vehicle.stop = self.stopPosition[vehicle.direction]
 
             # Display the vehicles
             for vehicle in self.simulation:
-                screen.blit(vehicle.image, [vehicle.x, vehicle.y])
+                self.screen.blit(vehicle.image, [vehicle.x, vehicle.y])
                 self.move(vehicle)
             pygame.display.update()
 
     def generatorVehicle(self):
         # Generating vehicles in the simulation
         while True:
-            direction = random.choice(list(EDirection))
+            direction = random.choices(list(EDirection), weights=(50, 50, 5, 5), k=1)[0]
             road = self.roads[direction.name]
-            EVehicle = random.choice(list(EVehicleType))
-            vehicle = VehicleObject(EVehicle, direction)
+            VehicleType = random.choice(list(EVehicle))
+            vehicle = VehicleObject(VehicleType, direction)
             road.lane[vehicle.lane].append(vehicle)
             vehicle.index = len(road.lane[vehicle.lane]) - 1
+            vehicle.type = VehicleType.name
+            road.existVehicle[vehicle.type] += 1
 
             preVehicle = road.lane[vehicle.lane][vehicle.index - 1]
             if len(road.lane[vehicle.lane]) > 1 and preVehicle.crossed == 0:
@@ -249,7 +285,7 @@ class Main:
 
             self.simulation.add(vehicle)
 
-            time.sleep(self.generatePeriod)
+            time.sleep(random.uniform(0, 0.5))
 
     def showStats(self):
         totalVehicles = 0
@@ -295,23 +331,26 @@ class Main:
             if vehicle.crossed == 0 and vehicle.x + vehicle.image.get_rect().width > self.stopLines[vehicle.direction]:
                 vehicle.crossed = 1
                 self.roads[vehicle.direction.name].crossed += 1
+                self.roads[vehicle.direction.name].existVehicle[vehicle.type] -= 1
                 self.vehiclesNotTurned[vehicle.direction][vehicle.lane].append(vehicle)
                 vehicle.crossedIndex = len(self.vehiclesNotTurned[vehicle.direction][vehicle.lane]) - 1
             if vehicle.crossed == 0:
                 preVehicle = self.roads[vehicle.direction.name].lane[vehicle.lane][vehicle.index - 1]
-                if ((vehicle.x + vehicle.image.get_rect().width <= vehicle.stop or (
-                        self.roads[vehicle.direction.name].trafficSignals.currentSignal == ESignal.GREEN)) and (
-                        vehicle.index == 0 or vehicle.x + vehicle.image.get_rect().width < (
-                        preVehicle.x - self.movingGap))):
+                if ((vehicle.x + vehicle.image.get_rect().width <= vehicle.stop or
+                     self.roads[vehicle.direction.name].trafficSignals.currentSignal == ESignal.GREEN) and
+                        (vehicle.index == 0 or vehicle.x + vehicle.image.get_rect().width < (
+                                preVehicle.x - self.movingGap))):
                     vehicle.x += vehicle.speed
             else:
                 if ((vehicle.crossedIndex == 0) or (vehicle.x + vehicle.image.get_rect().width < (
-                        self.vehiclesNotTurned[vehicle.direction][vehicle.lane][vehicle.crossedIndex - 1].x - self.movingGap))):
+                        self.vehiclesNotTurned[vehicle.direction][vehicle.lane][
+                            vehicle.crossedIndex - 1].x - self.movingGap))):
                     vehicle.x += vehicle.speed
 
         elif vehicle.direction == EDirection.NORTH:
             if vehicle.crossed == 0 and vehicle.y + vehicle.image.get_rect().height > self.stopLines[vehicle.direction]:
                 vehicle.crossed = 1
+                self.roads[vehicle.direction.name].existVehicle[vehicle.type] -= 1
                 self.roads[vehicle.direction.name].crossed += 1
                 self.vehiclesNotTurned[vehicle.direction][vehicle.lane].append(vehicle)
                 vehicle.crossedIndex = len(self.vehiclesNotTurned[vehicle.direction][vehicle.lane]) - 1
@@ -324,12 +363,14 @@ class Main:
                     vehicle.y += vehicle.speed
             else:
                 if ((vehicle.crossedIndex == 0) or (vehicle.y + vehicle.image.get_rect().height < (
-                        self.vehiclesNotTurned[vehicle.direction][vehicle.lane][vehicle.crossedIndex - 1].y - self.movingGap))):
+                        self.vehiclesNotTurned[vehicle.direction][vehicle.lane][
+                            vehicle.crossedIndex - 1].y - self.movingGap))):
                     vehicle.y += vehicle.speed
 
         elif vehicle.direction == EDirection.WEST:
             if vehicle.crossed == 0 and vehicle.x < self.stopLines[vehicle.direction]:
                 vehicle.crossed = 1
+                self.roads[vehicle.direction.name].existVehicle[vehicle.type] -= 1
                 self.roads[vehicle.direction.name].crossed += 1
                 self.vehiclesNotTurned[vehicle.direction][vehicle.lane].append(vehicle)
                 vehicle.crossedIndex = len(self.vehiclesNotTurned[vehicle.direction][vehicle.lane]) - 1
@@ -349,6 +390,7 @@ class Main:
         elif vehicle.direction == EDirection.SOUTH:
             if vehicle.crossed == 0 and vehicle.y < self.stopLines[vehicle.direction]:
                 vehicle.crossed = 1
+                self.roads[vehicle.direction.name].existVehicle[vehicle.type] -= 1
                 self.roads[vehicle.direction.name].crossed += 1
                 self.vehiclesNotTurned[vehicle.direction][vehicle.lane].append(vehicle)
                 vehicle.crossedIndex = len(self.vehiclesNotTurned[vehicle.direction][vehicle.lane]) - 1
@@ -365,25 +407,63 @@ class Main:
                         preVehicleNT.y + preVehicleNT.image.get_rect().height + self.movingGap))):
                     vehicle.y -= vehicle.speed
 
+    def uploadCCTV(self):
+        sleep = False
+        while True:
+            time.sleep(1)
+            if self.roads.get(EDirection.EAST.name).trafficSignals.currentSignal == ESignal.YELLOW:
+                sleep = True
+                pygame.image.save(self.screen, "screenshot.png")
+                time.sleep(0.2)
+                if os.path.exists("screenshot.png"):
+                    img = Image.open('screenshot.png')
+                    for index, coordinate in enumerate(self.screenshotCoordinates):
+                        tempImage = img.crop(coordinate)
+                        byte_stream = io.BytesIO()
+                        tempImage.save(byte_stream, format='PNG')
+                        byte_stream_value = byte_stream.getvalue()
+                        encoded_str = base64.b64encode(byte_stream_value)
+                        self.MySQL.updateCCTV(index + 1, encoded_str)
+
+            if sleep:
+                time.sleep(5)
+                sleep = False
+
     def wsReceiveHandler(self, msg):
         jsonData = json.loads(msg)
         instruction = jsonData["instruction"]
-        if instruction == EInstruction.REQUIRE_DATA_CURRENT_TRAFFIC_STATE.name:
+        if instruction == EInstruction.REQUIRE_DATA_CURRENT_TRAFFIC_SIGNAL_STATE.name:
             data = {}
             for (key, road) in self.roads.items():
                 data[key] = road.trafficSignals.currentSignal.name
-            self.wsSend(Communication(EInstruction.SEND_DATA_CURRENT_TRAFFIC_STATE.name, data).toJson())
+            self.wsSend(Communication(EInstruction.SEND_DATA_CURRENT_TRAFFIC_SIGNAL_STATE.name, data).toJson())
         elif instruction == EInstruction.REQUIRE_DATA_TRAFFIC_PERIOD.name:
             data = {}
             for (key, road) in self.roads.items():
-                data[key] = road.defaultPeriod
+                data[key] = road.defaultPeriod.copy()
             self.wsSend(Communication(EInstruction.SEND_DATA_TRAFFIC_PERIOD.name, data).toJson())
+        elif instruction == EInstruction.REQUIRE_DATA_CURRENT_TRAFFIC_STATUS.name:
+            data = {}
+            for (key, road) in self.roads.items():
+                data[key] = road.existVehicle
+            self.wsSend(Communication(EInstruction.SEND_DATA_CURRENT_TRAFFIC_STATUS.name, data).toJson())
         elif instruction == EInstruction.SWITCH_MODE.name:
             data = jsonData["data"]
             mode = data["trafficMode"]
             if mode == EMode.NORMAL.name:
                 self.mode = EMode.NORMAL
             elif mode == EMode.TRAFFIC_JAM.name:
+                self.trafficJamDirection = []
+                for direction in data["trafficJamRoad"]:
+                    if direction == EDirection.EAST.name:
+                        self.trafficJamDirection.append(EDirection.EAST)
+                    elif direction == EDirection.WEST.name:
+                        self.trafficJamDirection.append(EDirection.WEST)
+                    elif direction == EDirection.NORTH.name:
+                        self.trafficJamDirection.append(EDirection.NORTH)
+                    elif direction == EDirection.SOUTH.name:
+                        self.trafficJamDirection.append(EDirection.SOUTH)
+
                 self.trafficJamPeriod[ESignal.GREEN.name] = data["trafficJam"]["greenSecond"]
                 self.trafficJamPeriod[ESignal.YELLOW.name] = data["trafficJam"]["yellowSecond"]
                 self.trafficJamPeriod[ESignal.RED.name] = data["trafficJam"]["redSecond"]
@@ -423,6 +503,7 @@ class VehicleObject(pygame.sprite.Sprite):
         self.crossedIndex = 0
         self.crossed = 0
         self.index = None
+        self.type = None
         self.stop = None
         self.x = xAxis[direction][self.lane]
         self.y = yAxis[direction][self.lane]

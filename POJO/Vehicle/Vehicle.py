@@ -1,5 +1,5 @@
 from Enum.EnumDirection import EDirection
-from Enum.EnumVehicle import EVehicleType
+from Enum.EnumVehicle import EVehicle
 
 
 class Vehicle:
@@ -11,5 +11,5 @@ class Vehicle:
 
 
 if __name__ == '__main__':
-    obj = Vehicle(EVehicleType.BIKE, 1, EDirection.EAST)
+    obj = Vehicle(EVehicle.BIKE, 1, EDirection.EAST)
     print(obj.vType, obj.speed)
