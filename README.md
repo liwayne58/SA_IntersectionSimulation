@@ -1,6 +1,6 @@
 <!-- video -->
 <p align="center">
-  <video src="__assets__/Demo.mp4" controls></video>
+  <video src="https://github.com/user-attachments/assets/b0ed40a7-33de-4bde-8cf8-99c936645d31" controls></video>
 </p>
 
 <!-- tag line -->
